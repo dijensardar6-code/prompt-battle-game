@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prompt-Battle Battle Royale</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; background: #111; color: #fff; }
+    #ui { position: absolute; top: 20px; left: 20px; z-index: 10; background: rgba(0,0,0,0.7); padding: 15px; border-radius: 8px; }
+    #prompt-box { position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; gap: 10px; }
+    input { padding: 12px; font-size: 16px; width: 300px; border-radius: 5px; border: none; }
+    button { padding: 12px 20px; font-size: 16px; background: #ff4757; color: white; border: none; border-radius: 5px; cursor: pointer; }
+  </style>
+</head>
+<body>
+  <div id="ui">
+    <h2 id="challenge-text">Waiting for players...</h2>
+    <p>Phase: <span id="phase-label">waiting</span> | Timer: <span id="timer-val">15</span>s</p>
+  </div>
+
+  <div id="prompt-box">
+    <input type="text" id="prompt-input" placeholder="Type what to spawn (e.g. steel bridge)..." />
+    <button onclick="sendPrompt()">Spawn Object</button>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script>
+    const socket = io();
+
+    // Three.js Scene Setup
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x1a1a2e);
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Lighting & Floor
+    const light = new THREE.DirectionalLight(0xffffff, 1);
+    light.position.set(10, 20, 10);
+    scene.add(light);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    const floorGeo = new THREE.PlaneGeometry(50, 50);
+    const floorMat = new THREE.MeshStandardMaterial({ color: 0xff4757 }); // Lava red
+    const floor = new THREE.Mesh(floorGeo, floorMat);
+    floor.rotation.x = -Math.PI / 2;
+    scene.add(floor);
+
+    camera.position.set(0, 15, 25);
+    camera.lookAt(0, 0, 0);
+
+    const meshes = {};
+
+    socket.on('init', (state) => {
+      document.getElementById('challenge-text').innerText = state.challenge;
+    });
+
+    socket.on('timer-tick', (data) => {
+      document.getElementById('timer-val').innerText = data.timer;
+      document.getElementById('phase-label').innerText = data.phase;
+    });
+
+    socket.on('game-update', (state) => {
+      document.getElementById('challenge-text').innerText = state.challenge;
+    });
+
+    socket.on('object-spawned', (obj) => {
+      const geometry = new THREE.BoxGeometry(obj.scale.x, obj.scale.y, obj.scale.z);
+      const material = new THREE.MeshStandardMaterial({ color: Math.random() * 0xffffff });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.position.set(obj.x, obj.y, obj.z);
+      scene.add(mesh);
+      meshes[obj.id] = mesh;
+    });
+
+    function sendPrompt() {
+      const input = document.getElementById('prompt-input');
+      if (input.value.trim() !== '') {
+        socket.emit('submit-prompt', input.value);
+        input.value = '';
+      }
+    }
+
+    // Animation Loop
+    function animate() {
+      requestAnimationFrame(animate);
+      for (let id in meshes) {
+        if (meshes[id].position.y > 0.5) {
+          meshes[id].position.y -= 0.2; // Simple gravity fall
+        }
+      }
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
